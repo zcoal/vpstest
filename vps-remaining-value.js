@@ -95,15 +95,19 @@
       
       // 1. 优先看斜杠后面的周期
       if (periodStr) {
-        if (periodStr.match(/季|季付|季度|quarter(?:ly)?|season(?:al(?:ly)?)?/i)) period = '季';
+        if (periodStr.match(/三年|三年付|三年度|3年|3\s*year|three[\s-]?year|triennial(?:ly)?/i)) period = '三年';
+        else if (periodStr.match(/两年|二年|两年付|二年付|两年度|二年度|2年|2\s*year|two[\s-]?year|biennial(?:ly)?/i)) period = '两年';
         else if (periodStr.match(/半年|半年付|half[\s-]?year|semi[\s-]?annual(?:ly)?|semiannually/i)) period = '半年';
         else if (periodStr.match(/年|年付|年度|annually|annual|yearly|\byear\b|\byr\b|\/y\b/i)) period = '年';
+        else if (periodStr.match(/季|季付|季度|quarter(?:ly)?|season(?:al(?:ly)?)?/i)) period = '季';
       } 
       // 2. 如果斜杠后没写周期，在整个卡片文本里找线索（应对配置里单独选了计费周期的情况）
       else {
-        if (text.match(/周期[:：]?\s*(一?季|季付|季度)|季付|季度|quarter(?:ly)?|season(?:al(?:ly)?)?/i)) period = '季';
+        if (text.match(/周期[:：]?\s*(三年|三年付|三年度|3年)|三年付|三年度|3年|3\s*year|three[\s-]?year|triennial(?:ly)?/i)) period = '三年';
+        else if (text.match(/周期[:：]?\s*(两年|二年|两年付|二年付|两年度|二年度|2年)|两年付|二年付|两年度|二年度|2年|2\s*year|two[\s-]?year|biennial(?:ly)?/i)) period = '两年';
         else if (text.match(/周期[:：]?\s*(半年|半年付|半年度)|半年付|半年度|half[\s-]?year|semi[\s-]?annual(?:ly)?|semiannually/i)) period = '半年';
-        if (text.match(/周期[:：]?\s*(一?年|年付|年度)|年付|年度|annually|annual|yearly|\byear\b|\byr\b/i)) period = '年';
+        else if (text.match(/周期[:：]?\s*(一?年|年付|年度)|年付|年度|annually|annual|yearly|\byear\b|\byr\b/i)) period = '年';
+        else if (text.match(/周期[:：]?\s*(一?季|季付|季度)|季付|季度|quarter(?:ly)?|season(?:al(?:ly)?)?/i)) period = '季';
       }
       
       return parsePrice(priceStr, false, period);
@@ -134,7 +138,9 @@
     
     // 转换内部周期格式
     let periodType = 'month';
-    if (period === '年') periodType = 'year';
+    if (period === '三年') periodType = 'three-year';
+    else if (period === '两年') periodType = 'two-year';
+    else if (period === '年') periodType = 'year';
     else if (period === '半年') periodType = 'half-year';
     else if (period === '季') periodType = 'quarter';
     
@@ -165,6 +171,8 @@
   function calculateRemaining(price, days, period) {
     let daily;
     switch (period) {
+      case 'three-year': daily = price / 1095; break;
+      case 'two-year': daily = price / 730; break;
       case 'year': daily = price / 365; break;
       case 'half-year': daily = price / 182.5; break;
       case 'quarter': daily = price / 90; break;
@@ -220,8 +228,10 @@
   function generateTooltip(details) {
     let periodText = '月';
     let divisor = 30;
-    
-    if (details.period === 'year') { periodText = '年'; divisor = 365; }
+
+    if (details.period === 'three-year') { periodText = '三年'; divisor = 1095; }
+    else if (details.period === 'two-year') { periodText = '两年'; divisor = 730; }
+    else if (details.period === 'year') { periodText = '年'; divisor = 365; }
     else if (details.period === 'half-year') { periodText = '半年'; divisor = 182.5; }
     else if (details.period === 'quarter') { periodText = '季'; divisor = 90; }
 
