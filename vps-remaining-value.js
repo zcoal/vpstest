@@ -95,15 +95,15 @@
       
       // 1. 优先看斜杠后面的周期
       if (periodStr) {
-        if (periodStr.match(/年|yr|year/i)) period = '年';
-        else if (periodStr.match(/季/)) period = '季';
-        else if (periodStr.match(/半年/)) period = '半年';
+        if (periodStr.match(/年|年付|年度|annually|annual|yearly|\byear\b|\byr\b|\/y\b/i)) period = '年';
+        else if (periodStr.match(/季|季付|季度|quarter(?:ly)?|season(?:al(?:ly)?)?/i)) period = '季';
+        else if (periodStr.match(/半年|半年付|half[\s-]?year|semi[\s-]?annual(?:ly)?|semiannually/i)) period = '半年';
       } 
       // 2. 如果斜杠后没写周期，在整个卡片文本里找线索（应对配置里单独选了计费周期的情况）
       else {
-        if (text.match(/周期:\s*(一?年|年付)|年付|Annually|Yearly/i)) period = '年';
-        else if (text.match(/周期:\s*(一?季|季付)|季付/i)) period = '季';
-        else if (text.match(/周期:\s*半年|半年付/i)) period = '半年';
+        if (text.match(/周期[:：]?\s*(一?年|年付|年度)|年付|年度|annually|annual|yearly|\byear\b|\byr\b/i)) period = '年';
+        else if (text.match(/周期[:：]?\s*(一?季|季付|季度)|季付|季度|quarter(?:ly)?|season(?:al(?:ly)?)?/i)) period = '季';
+        else if (text.match(/周期[:：]?\s*(半年|半年付|半年度)|半年付|半年度|half[\s-]?year|semi[\s-]?annual(?:ly)?|semiannually/i)) period = '半年';
       }
       
       return parsePrice(priceStr, false, period);
