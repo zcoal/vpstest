@@ -76,47 +76,74 @@
     }
   }
   
-  // 提取价格信息
+  // 提取价格信息（修复版：兼容空格、多类型符号和独立周期行）
   function extractPrice(text) {
-    // 一次性付费（支持HK$等货币符号）
-    const oneTimeMatch = text.match(/价格:\s*((?:HK\$|US\$|C\$|A\$|€|£|¥|￥|\$)?\s*[\d.,]+)\/-/);
+    // 一次性付费
+    const oneTimeMatch = text.match(/价格:\s*([^\/\n]+)\/-/);
     if (oneTimeMatch) return parsePrice(oneTimeMatch[1], true);
     
     // 免费
     if (text.match(/价格:\s*(免费|Free|0)/i)) return { free: true };
     
-    // 正常价格（支持多种货币符号）
-    const normalMatch = text.match(/价格:\s*((?:HK\$|US\$|C\$|A\$|€|£|¥|￥|\$)?\s*[\d.,]+)(?:\/(月|年))?/);
-    if (normalMatch) return parsePrice(normalMatch[1], false, normalMatch[2]);
+    // 正常价格：容忍空格和前后字母（如 "$100 / 年付"，"100USD/年"）
+    const normalMatch = text.match(/价格:\s*([^\/\n]+)(?:\s*\/\s*([^\s\n]+))?/);
+    if (normalMatch) {
+      let priceStr = normalMatch[1].trim();
+      let periodStr = normalMatch[2]; 
+      
+      let period = '月'; // 默认月付
+      
+      // 1. 优先看斜杠后面的周期
+      if (periodStr) {
+        if (periodStr.match(/年|yr|year/i)) period = '年';
+        else if (periodStr.match(/季/)) period = '季';
+        else if (periodStr.match(/半年/)) period = '半年';
+      } 
+      // 2. 如果斜杠后没写周期，在整个卡片文本里找线索（应对配置里单独选了计费周期的情况）
+      else {
+        if (text.match(/周期:\s*(一?年|年付)|年付|Annually|Yearly/i)) period = '年';
+        else if (text.match(/周期:\s*(一?季|季付)|季付/i)) period = '季';
+        else if (text.match(/周期:\s*半年|半年付/i)) period = '半年';
+      }
+      
+      return parsePrice(priceStr, false, period);
+    }
     
     return null;
   }
   
   // 解析价格
   function parsePrice(str, oneTime = false, period = '月') {
-    // 提取货币符号
     let symbol = CONFIG.currency;
-    let valueStr = str;
     
     // 检查是否包含已知货币符号
     for (const currency of CURRENCY_SYMBOLS) {
-      if (str.startsWith(currency)) {
+      if (str.includes(currency)) {
         symbol = currency;
-        valueStr = str.substring(currency.length).trim();
         break;
       }
     }
+    // 补充常见字母型货币兜底
+    if (str.match(/USD/i)) symbol = '$';
+    if (str.match(/CNY|RMB/i)) symbol = '￥';
+    if (str.match(/EUR/i)) symbol = '€';
     
-    // 清理数字字符串（移除逗号）
-    const cleanValueStr = valueStr.replace(/,/g, '');
-    const value = parseFloat(cleanValueStr);
+    // 清理字符串，精准提取纯数字（应对 100USD 紧贴在一起的情况）
+    const numMatch = str.replace(/,/g, '').match(/[\d.]+/);
+    const value = numMatch ? parseFloat(numMatch[0]) : 0;
+    
+    // 转换内部周期格式
+    let periodType = 'month';
+    if (period === '年') periodType = 'year';
+    else if (period === '半年') periodType = 'half-year';
+    else if (period === '季') periodType = 'quarter';
     
     return {
       value, 
       symbol,
       free: false,
       oneTime,
-      period: period === '年' ? 'year' : 'month'
+      period: periodType
     };
   }
   
@@ -134,9 +161,15 @@
     return match ? parseInt(match[1]) : null;
   }
   
-  // 计算剩余价值
+  // 计算剩余价值（增加季付和半年付逻辑）
   function calculateRemaining(price, days, period) {
-    const daily = period === 'year' ? price / 365 : price / 30;
+    let daily;
+    switch (period) {
+      case 'year': daily = price / 365; break;
+      case 'half-year': daily = price / 182.5; break;
+      case 'quarter': daily = price / 90; break;
+      default: daily = price / 30; // month
+    }
     return daily * days;
   }
   
@@ -159,15 +192,9 @@
     tag.title = generateTooltip(details);
     tag.textContent = `${CONFIG.tagText}${display}`;
     
-    // 寻找标签容器
     let container = findTagContainer(card);
+    if (!container) return;
     
-    if (!container) {
-      console.warn('未找到标签容器:', card);
-      return;
-    }
-    
-    // 根据配置添加标签
     if (CONFIG.tagPosition === 'first') {
       container.prepend(tag);
     } else {
@@ -177,39 +204,35 @@
   
   // 查找标签容器
   function findTagContainer(card) {
-    // 尝试标准选择器
     let container = card.querySelector('section.flex.gap-1.items-center.flex-wrap.mt-0\\.5');
-    
     if (!container) {
-      // 尝试在卡片内查找任何flex容器
       const sections = card.querySelectorAll('section.flex.items-center.gap-1');
-      if (sections.length > 0) {
-        container = sections[0];
-      }
+      if (sections.length > 0) container = sections[0];
     }
-    
-    // 如果还是没找到，尝试最后一个section元素
     if (!container) {
       const sections = card.querySelectorAll('section');
-      if (sections.length > 0) {
-        container = sections[sections.length - 1];
-      }
+      if (sections.length > 0) container = sections[sections.length - 1];
     }
-    
     return container;
   }
   
-  // 生成工具提示
+  // 生成工具提示（适配新的周期显示）
   function generateTooltip(details) {
+    let periodText = '月';
+    let divisor = 30;
+    
+    if (details.period === 'year') { periodText = '年'; divisor = 365; }
+    else if (details.period === 'half-year') { periodText = '半年'; divisor = 182.5; }
+    else if (details.period === 'quarter') { periodText = '季'; divisor = 90; }
+
     if (details.expired) {
-      return `已过期VPS\n原价: ${details.symbol}${details.value}/${details.period === 'year' ? '年' : '月'}`;
+      return `已过期VPS\n原价: ${details.symbol}${details.value}/${periodText}`;
     }
     
-    const period = details.period === 'year' ? '年' : '月';
-    const daily = details.period === 'year' ? details.value / 365 : details.value / 30;
+    const daily = details.value / divisor;
     const ratio = ((details.remaining / details.value) * 100).toFixed(1);
     
-    return `原价: ${details.symbol}${details.value}/${period}\n` +
+    return `原价: ${details.symbol}${details.value}/${periodText}\n` +
            `剩余天数: ${details.days}天\n` +
            `每日成本: ${details.symbol}${daily.toFixed(2)}/天\n` +
            `剩余价值占比: ${ratio}%`;
@@ -217,139 +240,58 @@
   
   // 初始化函数
   function init() {
-    // 立即执行一次
     processVPS();
-    
-    // 延迟执行以确保页面加载完成
     setTimeout(processVPS, 1000);
-    
-    // 设置观察器
     setupMutationObserver();
-    
-    // 定期检查（每30秒）
     setInterval(processVPS, 30000);
-    
-    console.log('VPS剩余价值计算器已加载');
   }
   
   // 设置MutationObserver
   function setupMutationObserver() {
     if (typeof MutationObserver !== 'undefined') {
       const observer = new MutationObserver((mutations) => {
-        // 检查是否有VPS卡片相关的变更
         const hasVPSChanges = mutations.some(mutation => {
-          // 检查是否有新增或移除的节点
           if (mutation.type === 'childList') {
-            // 检查新增的节点中是否有VPS卡片
             for (const node of mutation.addedNodes) {
-              if (node.nodeType === 1 && 
-                  (node.classList?.contains('rounded-lg') || 
-                   node.querySelector?.('.rounded-lg.border.bg-card'))) {
-                return true;
-              }
+              if (node.nodeType === 1 && (node.classList?.contains('rounded-lg') || node.querySelector?.('.rounded-lg.border.bg-card'))) return true;
             }
-            // 检查移除的节点中是否有我们的标签
             for (const node of mutation.removedNodes) {
-              if (node.nodeType === 1 && node.classList?.contains('vps-value-tag')) {
-                return true;
-              }
+              if (node.nodeType === 1 && node.classList?.contains('vps-value-tag')) return true;
             }
           }
-          // 检查class属性的变化（状态变化）
-          if (mutation.type === 'attributes' && 
-              mutation.attributeName === 'class' &&
-              mutation.target.classList?.contains('rounded-lg')) {
-            return true;
-          }
+          if (mutation.type === 'attributes' && mutation.attributeName === 'class' && mutation.target.classList?.contains('rounded-lg')) return true;
           return false;
         });
         
-        if (hasVPSChanges) {
-          setTimeout(processVPS, 300);
-        }
+        if (hasVPSChanges) setTimeout(processVPS, 300);
       });
       
-      observer.observe(document.body, { 
-        childList: true, 
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['class']
-      });
-      
-      // 保存观察器以便后续使用
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
       window._vpsObserver = observer;
     }
   }
   
   // 全局API
   window.VPSRemainingValue = {
-    // 重新计算所有VPS
     recalculate: processVPS,
-    
-    // 设置货币符号
-    setCurrency: function(symbol) {
-      CONFIG.currency = symbol || '$';
-      processVPS();
-      return this;
-    },
-    
-    // 设置标签文本
-    setTagText: function(text) {
-      CONFIG.tagText = text;
-      processVPS();
-      return this;
-    },
-    
-    // 设置标签位置
-    setTagPosition: function(pos) {
-      if (pos === 'first' || pos === 'last') {
-        CONFIG.tagPosition = pos;
-        processVPS();
-      }
-      return this;
-    },
-    
-    // 获取当前配置
-    getConfig: function() {
-      return { ...CONFIG };
-    },
-    
-    // 添加过期关键词
-    addExpiredKeyword: function(keyword) {
-      if (!EXPIRED_KEYWORDS.includes(keyword)) {
-        EXPIRED_KEYWORDS.push(keyword);
-      }
-      return this;
-    },
-    
-    // 移除观察器（清理）
+    setCurrency: function(symbol) { CONFIG.currency = symbol || '$'; processVPS(); return this; },
+    setTagText: function(text) { CONFIG.tagText = text; processVPS(); return this; },
+    setTagPosition: function(pos) { if (pos === 'first' || pos === 'last') { CONFIG.tagPosition = pos; processVPS(); } return this; },
+    getConfig: function() { return { ...CONFIG }; },
+    addExpiredKeyword: function(keyword) { if (!EXPIRED_KEYWORDS.includes(keyword)) EXPIRED_KEYWORDS.push(keyword); return this; },
     destroy: function() {
-      if (window._vpsObserver) {
-        window._vpsObserver.disconnect();
-        delete window._vpsObserver;
-      }
-      
-      // 移除所有标签
+      if (window._vpsObserver) { window._vpsObserver.disconnect(); delete window._vpsObserver; }
       document.querySelectorAll('.vps-value-tag').forEach(tag => tag.remove());
-      
-      // 移除样式
-      if (style.parentNode) {
-        style.parentNode.removeChild(style);
-      }
+      if (style.parentNode) style.parentNode.removeChild(style);
     }
   };
   
-  // 兼容旧的全局函数
   window.recalculateVPSValues = processVPS;
   window.setCurrency = symbol => VPSRemainingValue.setCurrency(symbol);
   window.setTagText = text => VPSRemainingValue.setTagText(text);
   window.setTagPosition = pos => VPSRemainingValue.setTagPosition(pos);
   
-  // 自动初始化
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
   
 })();
