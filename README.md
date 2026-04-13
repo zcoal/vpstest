@@ -23,4 +23,4 @@
 ## 🚀 快速开始
 
 ```bash
-curl -o frp-manager.sh https://raw.githubusercontent.com/zcoal/vps-test/main/frps-onekey-installer.sh && chmod +x frps-onekey-installer.sh && sudo ./frps-onekey-installer.sh
+curl -o frp-manager.sh https://raw.githubusercontent.com/zcoal/vps-test/main/frps-onekey-installer.sh && chmod +x frps-onekey-installer.sh && ./frps-onekey-installer.sh
