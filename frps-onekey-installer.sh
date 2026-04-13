@@ -167,15 +167,15 @@ get_current_config() {
     fi
 }
 
-# 显示配置摘要（修复对齐）
+# 显示配置摘要（修复对齐 - 颜色代码移到外部）
 show_config_summary() {
     get_current_config
     
     echo -e "${CYAN}┌─────────────────────────────────────────────────────────┐${NC}"
-    printf "${CYAN}│${NC} 客户端连接端口 : %-26s${CYAN}│${NC}\n" "$CURRENT_BIND_PORT"
-    printf "${CYAN}│${NC} 管理面板端口   : %-26s${CYAN}│${NC}\n" "$CURRENT_DASHBOARD_PORT"
-    printf "${CYAN}│${NC} 管理用户名     : %-26s${CYAN}│${NC}\n" "$CURRENT_DASHBOARD_USER"
-    printf "${CYAN}│${NC} 认证Token      : %-26s${CYAN}│${NC}\n" "${CURRENT_TOKEN:0:10}..."
+    echo -e "${CYAN}│${NC} 客户端连接端口 : ${CURRENT_BIND_PORT}${NC}"
+    echo -e "${CYAN}│${NC} 管理面板端口   : ${CURRENT_DASHBOARD_PORT}${NC}"
+    echo -e "${CYAN}│${NC} 管理用户名     : ${CURRENT_DASHBOARD_USER}${NC}"
+    echo -e "${CYAN}│${NC} 认证Token      : ${CURRENT_TOKEN:0:10}...${NC}"
     echo -e "${CYAN}└─────────────────────────────────────────────────────────┘${NC}"
 }
 
@@ -191,51 +191,53 @@ show_network_status() {
         
         local local_ip=""
         if command -v ip >/dev/null 2>&1; then
-            local_ip=$(ip route get 1 | awk '{print $NF;exit}')
-        elif command -v hostname >/dev/null 2>&1; then
+            local_ip=$(ip route get 1 | awk '{print $NF;exit}' 2>/dev/null)
+            # 如果获取的是IP格式，直接使用
+            if [[ ! "$local_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                local_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+            fi
+        fi
+        
+        if [ -z "$local_ip" ]; then
             local_ip=$(hostname)
-        else
-            local_ip="未知"
         fi
         
         if [[ "$local_ip" =~ ^[a-zA-Z] ]]; then
-            printf "${CYAN}│${NC} 服务器主机     : %-26s${CYAN}│${NC}\n" "$local_ip"
+            echo -e "${CYAN}│${NC} 服务器主机     : ${local_ip}${NC}"
         else
-            printf "${CYAN}│${NC} 服务端地址     : %-26s${CYAN}│${NC}\n" "$local_ip:$bind_port"
+            echo -e "${CYAN}│${NC} 服务端地址     : ${local_ip}:${bind_port}${NC}"
         fi
         
-        printf "${CYAN}│${NC} 管理面板端口   : %-26s${CYAN}│${NC}\n" "$dash_port"
+        echo -e "${CYAN}│${NC} 管理面板端口   : ${dash_port}${NC}"
         
-        if ss -tuln 2>/dev/null | grep -q ":$bind_port "; then
-            printf "${CYAN}│${NC} 连接端口状态   : %-26s${CYAN}│${NC}\n" "${GREEN}正常监听${NC}${CYAN}"
-        elif netstat -tuln 2>/dev/null | grep -q ":$bind_port "; then
-            printf "${CYAN}│${NC} 连接端口状态   : %-26s${CYAN}│${NC}\n" "${GREEN}正常监听${NC}${CYAN}"
+        if ss -tuln 2>/dev/null | grep -q ":$bind_port " || netstat -tuln 2>/dev/null | grep -q ":$bind_port "; then
+            echo -e "${CYAN}│${NC} 连接端口状态   : ${GREEN}正常监听${NC}${CYAN}${NC}"
         else
-            printf "${CYAN}│${NC} 连接端口状态   : %-26s${CYAN}│${NC}\n" "${RED}未监听${NC}${CYAN}"
+            echo -e "${CYAN}│${NC} 连接端口状态   : ${RED}未监听${NC}${CYAN}${NC}"
         fi
         
         echo -e "${CYAN}└─────────────────────────────────────────────────────────┘${NC}"
     fi
 }
 
-# 显示自动重启状态
+# 显示自动重启状态（修复对齐）
 show_autorestart_status() {
     echo -e "${CYAN}┌─────────────────────────────────────────────────────────┐${NC}"
     
     if [ "$INIT_SYSTEM" = "systemd" ] && [ -f /etc/systemd/system/frps.service ]; then
         if grep -q "Restart=always" /etc/systemd/system/frps.service; then
-            printf "${CYAN}│${NC} Systemd自动重启 : %-26s${CYAN}│${NC}\n" "${GREEN}✓ 已启用${NC}${CYAN}"
+            echo -e "${CYAN}│${NC} Systemd自动重启 : ${GREEN}✓ 已启用${NC}${CYAN}${NC}"
             local restart_sec=$(grep "RestartSec=" /etc/systemd/system/frps.service | cut -d'=' -f2)
-            printf "${CYAN}│${NC} 重启间隔       : %-26s${CYAN}│${NC}\n" "${restart_sec:-10s}"
+            echo -e "${CYAN}│${NC} 重启间隔       : ${restart_sec:-10s}${NC}"
         else
-            printf "${CYAN}│${NC} Systemd自动重启 : %-26s${CYAN}│${NC}\n" "${RED}✗ 未启用${NC}${CYAN}"
+            echo -e "${CYAN}│${NC} Systemd自动重启 : ${RED}✗ 未启用${NC}${CYAN}${NC}"
         fi
     fi
     
     if crontab -l 2>/dev/null | grep -q "frp_monitor.sh"; then
-        printf "${CYAN}│${NC} Cron监控        : %-26s${CYAN}│${NC}\n" "${GREEN}✓ 已启用 (每分钟)${NC}${CYAN}"
+        echo -e "${CYAN}│${NC} Cron监控        : ${GREEN}✓ 已启用 (每分钟)${NC}${CYAN}${NC}"
     else
-        printf "${CYAN}│${NC} Cron监控        : %-26s${CYAN}│${NC}\n" "${YELLOW}○ 未启用${NC}${CYAN}"
+        echo -e "${CYAN}│${NC} Cron监控        : ${YELLOW}○ 未启用${NC}${CYAN}${NC}"
     fi
     
     echo -e "${CYAN}└─────────────────────────────────────────────────────────┘${NC}"
@@ -260,26 +262,26 @@ show_main_menu() {
     
     echo -e "${PURPLE}══════════════════════ 主菜单 ═══════════════════════${NC}"
     echo ""
-    echo -e "  ${GREEN}[1]${NC}  安装 FRP 服务端"
-    echo -e "  ${GREEN}[2]${NC}  卸载 FRP 服务端"
+    echo -e "  ${GREEN}[1]${NC}   安装 FRP 服务端"
+    echo -e "  ${GREEN}[2]${NC}   卸载 FRP 服务端"
     echo ""
-    echo -e "  ${BLUE}[3]${NC}  启动 FRP 服务"
-    echo -e "  ${BLUE}[4]${NC}  停止 FRP 服务"
-    echo -e "  ${BLUE}[5]${NC}  重启 FRP 服务"
-    echo -e "  ${BLUE}[6]${NC}  查看服务状态"
+    echo -e "  ${BLUE}[3]${NC}   启动 FRP 服务"
+    echo -e "  ${BLUE}[4]${NC}   停止 FRP 服务"
+    echo -e "  ${BLUE}[5]${NC}   重启 FRP 服务"
+    echo -e "  ${BLUE}[6]${NC}   查看服务状态"
     echo ""
-    echo -e "  ${YELLOW}[7]${NC}  修改配置"
-    echo -e "  ${YELLOW}[8]${NC}  查看配置文件"
-    echo -e "  ${YELLOW}[9]${NC}  查看实时日志"
+    echo -e "  ${YELLOW}[7]${NC}   修改配置"
+    echo -e "  ${YELLOW}[8]${NC}   查看配置文件"
+    echo -e "  ${YELLOW}[9]${NC}   查看实时日志"
     echo ""
-    echo -e "  ${CYAN}[10]${NC} 查看安全信息"
-    echo -e "  ${CYAN}[11]${NC} 检查更新"
-    echo -e "  ${CYAN}[12]${NC} 备份配置"
+    echo -e "  ${CYAN}[10]${NC}  查看安全信息"
+    echo -e "  ${CYAN}[11]${NC}  检查更新"
+    echo -e "  ${CYAN}[12]${NC}  备份配置"
     echo ""
-    echo -e "  ${PURPLE}[13]${NC} 配置自动重启"
-    echo -e "  ${PURPLE}[14]${NC} 查看监控日志"
+    echo -e "  ${PURPLE}[13]${NC}  配置自动重启"
+    echo -e "  ${PURPLE}[14]${NC}  查看监控日志"
     echo ""
-    echo -e "  ${RED}[0]${NC}  退出脚本"
+    echo -e "  ${RED}[0]${NC}   退出脚本"
     echo ""
     echo -e "${PURPLE}══════════════════════════════════════════════════════${NC}"
     echo ""
@@ -460,16 +462,16 @@ configure_autorestart() {
     
     if [ "$INIT_SYSTEM" = "systemd" ] && [ -f /etc/systemd/system/frps.service ]; then
         if grep -q "Restart=always" /etc/systemd/system/frps.service; then
-            echo -e "${CYAN}│${NC} Systemd自动重启 : ${GREEN}已启用${NC}${CYAN}                              ${CYAN}│${NC}"
+            echo -e "${CYAN}│${NC} Systemd自动重启 : ${GREEN}已启用${NC}${CYAN}                              ${NC}"
         else
-            echo -e "${CYAN}│${NC} Systemd自动重启 : ${RED}未启用${NC}${CYAN}                              ${CYAN}│${NC}"
+            echo -e "${CYAN}│${NC} Systemd自动重启 : ${RED}未启用${NC}${CYAN}                              ${NC}"
         fi
     fi
     
     if crontab -l 2>/dev/null | grep -q "$FRP_DIR/frp_monitor.sh"; then
-        echo -e "${CYAN}│${NC} Cron监控        : ${GREEN}已启用${NC}${CYAN}                              ${CYAN}│${NC}"
+        echo -e "${CYAN}│${NC} Cron监控        : ${GREEN}已启用${NC}${CYAN}                              ${NC}"
     else
-        echo -e "${CYAN}│${NC} Cron监控        : ${RED}未启用${NC}${CYAN}                              ${CYAN}│${NC}"
+        echo -e "${CYAN}│${NC} Cron监控        : ${RED}未启用${NC}${CYAN}                              ${NC}"
     fi
     
     echo -e "${CYAN}└─────────────────────────────────────────────────────────┘${NC}"
@@ -529,14 +531,11 @@ enable_systemd_autorestart() {
         return
     fi
     
-    # 备份原服务文件
     cp /etc/systemd/system/frps.service /etc/systemd/system/frps.service.bak
     
-    # 修改服务文件启用自动重启
     sed -i 's/Restart=.*/Restart=always/' /etc/systemd/system/frps.service
     sed -i 's/RestartSec=.*/RestartSec=10s/' /etc/systemd/system/frps.service
     
-    # 如果没有Restart配置，则添加
     if ! grep -q "Restart=" /etc/systemd/system/frps.service; then
         sed -i '/\[Service\]/a Restart=always\nRestartSec=10s' /etc/systemd/system/frps.service
     fi
@@ -894,11 +893,14 @@ save_security_info() {
     
     local local_ip=""
     if command -v ip >/dev/null 2>&1; then
-        local_ip=$(ip route get 1 | awk '{print $NF;exit}')
-    elif command -v hostname >/dev/null 2>&1; then
+        local_ip=$(ip route get 1 | awk '{print $NF;exit}' 2>/dev/null)
+        if [[ ! "$local_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            local_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+        fi
+    fi
+    
+    if [ -z "$local_ip" ]; then
         local_ip=$(hostname)
-    else
-        local_ip="未知"
     fi
     
     cat > "$FRP_DIR/frp_security_info.txt" << EOF
@@ -949,13 +951,10 @@ EOF
 setup_autorestart() {
     echo -e "${YELLOW}[7/7] 配置自动重启...${NC}"
     
-    # 对于systemd，已经在服务文件中配置了Restart=always
-    # 额外添加cron监控作为双重保障
     if [ "$INIT_SYSTEM" = "systemd" ]; then
         echo -e "${GREEN}✓ Systemd自动重启已配置${NC}"
     fi
     
-    # 创建监控脚本并设置cron任务
     create_monitor_script
     setup_cron_monitor
 }
