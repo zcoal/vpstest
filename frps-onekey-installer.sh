@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 WHITE='\033[1;37m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 # 配置变量
 FRP_VERSION="0.56.0"
@@ -37,12 +37,13 @@ CURRENT_BIND_PORT=""
 CURRENT_DASHBOARD_PORT=""
 CURRENT_DASHBOARD_USER=""
 CURRENT_TOKEN=""
+CURRENT_VHOST_HTTP_PORT=""
+CURRENT_VHOST_HTTPS_PORT=""
 
 # ============================================================================
 # 通用函数
 # ============================================================================
 
-# 检测操作系统和包管理器
 detect_system() {
     if [ -f /etc/alpine-release ]; then
         OS_TYPE="alpine"
@@ -76,7 +77,6 @@ detect_system() {
     fi
 }
 
-# 检查root权限
 check_root() {
     if [ "$(id -u)" != "0" ]; then
         echo -e "${RED}错误: 此脚本必须以root用户运行${NC}"
@@ -84,14 +84,12 @@ check_root() {
     fi
 }
 
-# 显示状态栏
 status_bar() {
     echo -e "${BLUE}════════════════════════════════════════════════════════════════════════════════${NC}"
     echo -e "${WHITE}FRP 服务端管理脚本 v2.0 (支持自动重启)${NC}   ${CYAN}系统: $OS_TYPE ($INIT_SYSTEM)${NC}"
     echo -e "${BLUE}════════════════════════════════════════════════════════════════════════════════${NC}"
 }
 
-# 获取服务状态
 get_service_status() {
     if [ ! -f "$FRP_BIN" ]; then
         echo "not_installed"
@@ -132,7 +130,6 @@ get_service_status() {
     esac
 }
 
-# 显示服务状态
 show_service_status() {
     local status=$(get_service_status)
     
@@ -152,39 +149,45 @@ show_service_status() {
     esac
 }
 
-# 获取当前配置
 get_current_config() {
     if [ -f "$FRP_CONFIG" ]; then
         CURRENT_BIND_PORT=$(grep '^bind_port' "$FRP_CONFIG" | cut -d'=' -f2 | tr -d ' ')
         CURRENT_DASHBOARD_PORT=$(grep '^dashboard_port' "$FRP_CONFIG" | cut -d'=' -f2 | tr -d ' ')
         CURRENT_DASHBOARD_USER=$(grep '^dashboard_user' "$FRP_CONFIG" | cut -d'=' -f2 | tr -d ' ')
         CURRENT_TOKEN=$(grep '^token' "$FRP_CONFIG" | cut -d'=' -f2 | tr -d ' ')
+        CURRENT_VHOST_HTTP_PORT=$(grep '^vhost_http_port' "$FRP_CONFIG" | cut -d'=' -f2 | tr -d ' ')
+        CURRENT_VHOST_HTTPS_PORT=$(grep '^vhost_https_port' "$FRP_CONFIG" | cut -d'=' -f2 | tr -d ' ')
+        
+        [ -z "$CURRENT_VHOST_HTTP_PORT" ] && CURRENT_VHOST_HTTP_PORT="未启用"
+        [ -z "$CURRENT_VHOST_HTTPS_PORT" ] && CURRENT_VHOST_HTTPS_PORT="未启用"
     else
         CURRENT_BIND_PORT="未配置"
         CURRENT_DASHBOARD_PORT="未配置"
         CURRENT_DASHBOARD_USER="未配置"
         CURRENT_TOKEN="未配置"
+        CURRENT_VHOST_HTTP_PORT="未配置"
+        CURRENT_VHOST_HTTPS_PORT="未配置"
     fi
 }
 
-# 显示配置摘要（修复对齐 - 颜色代码移到外部）
 show_config_summary() {
     get_current_config
     
-    echo -e "${CYAN}┌─────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${CYAN}│${NC} 客户端连接端口 : ${CURRENT_BIND_PORT}${NC}"
-    echo -e "${CYAN}│${NC} 管理面板端口   : ${CURRENT_DASHBOARD_PORT}${NC}"
-    echo -e "${CYAN}│${NC} 管理用户名     : ${CURRENT_DASHBOARD_USER}${NC}"
-    echo -e "${CYAN}│${NC} 认证Token      : ${CURRENT_TOKEN:0:10}...${NC}"
-    echo -e "${CYAN}└─────────────────────────────────────────────────────────┘${NC}"
+    echo -e "${CYAN}┌─────────────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${CYAN}│${NC} 客户端连接端口     : ${CURRENT_BIND_PORT}${NC}"
+    echo -e "${CYAN}│${NC} 管理面板端口       : ${CURRENT_DASHBOARD_PORT}${NC}"
+    echo -e "${CYAN}│${NC} 管理用户名         : ${CURRENT_DASHBOARD_USER}${NC}"
+    echo -e "${CYAN}│${NC} 认证Token          : ${CURRENT_TOKEN:0:10}...${NC}"
+    echo -e "${CYAN}│${NC} HTTP代理端口       : ${CURRENT_VHOST_HTTP_PORT}${NC}"
+    echo -e "${CYAN}│${NC} HTTPS代理端口      : ${CURRENT_VHOST_HTTPS_PORT}${NC}"
+    echo -e "${CYAN}└─────────────────────────────────────────────────────────────────┘${NC}"
 }
 
-# 显示网络状态（修复对齐）
 show_network_status() {
     local status=$(get_service_status)
     
     if [ "$status" = "running" ]; then
-        echo -e "${CYAN}┌─────────────────────────────────────────────────────────┐${NC}"
+        echo -e "${CYAN}┌─────────────────────────────────────────────────────────────────┐${NC}"
         
         local bind_port=${CURRENT_BIND_PORT:-7000}
         local dash_port=${CURRENT_DASHBOARD_PORT:-7500}
@@ -192,7 +195,6 @@ show_network_status() {
         local local_ip=""
         if command -v ip >/dev/null 2>&1; then
             local_ip=$(ip route get 1 | awk '{print $NF;exit}' 2>/dev/null)
-            # 如果获取的是IP格式，直接使用
             if [[ ! "$local_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
                 local_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
             fi
@@ -203,47 +205,45 @@ show_network_status() {
         fi
         
         if [[ "$local_ip" =~ ^[a-zA-Z] ]]; then
-            echo -e "${CYAN}│${NC} 服务器主机     : ${local_ip}${NC}"
+            echo -e "${CYAN}│${NC} 服务器主机         : ${local_ip}${NC}"
         else
-            echo -e "${CYAN}│${NC} 服务端地址     : ${local_ip}:${bind_port}${NC}"
+            echo -e "${CYAN}│${NC} 服务端地址         : ${local_ip}:${bind_port}${NC}"
         fi
         
-        echo -e "${CYAN}│${NC} 管理面板端口   : ${dash_port}${NC}"
+        echo -e "${CYAN}│${NC} 管理面板地址       : http://${local_ip}:${dash_port}${NC}"
         
         if ss -tuln 2>/dev/null | grep -q ":$bind_port " || netstat -tuln 2>/dev/null | grep -q ":$bind_port "; then
-            echo -e "${CYAN}│${NC} 连接端口状态   : ${GREEN}正常监听${NC}${CYAN}${NC}"
+            echo -e "${CYAN}│${NC} 连接端口状态       : ${GREEN}正常监听${NC}${CYAN}${NC}"
         else
-            echo -e "${CYAN}│${NC} 连接端口状态   : ${RED}未监听${NC}${CYAN}${NC}"
+            echo -e "${CYAN}│${NC} 连接端口状态       : ${RED}未监听${NC}${CYAN}${NC}"
         fi
         
-        echo -e "${CYAN}└─────────────────────────────────────────────────────────┘${NC}"
+        echo -e "${CYAN}└─────────────────────────────────────────────────────────────────┘${NC}"
     fi
 }
 
-# 显示自动重启状态（修复对齐）
 show_autorestart_status() {
-    echo -e "${CYAN}┌─────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${CYAN}┌─────────────────────────────────────────────────────────────────┐${NC}"
     
     if [ "$INIT_SYSTEM" = "systemd" ] && [ -f /etc/systemd/system/frps.service ]; then
         if grep -q "Restart=always" /etc/systemd/system/frps.service; then
-            echo -e "${CYAN}│${NC} Systemd自动重启 : ${GREEN}✓ 已启用${NC}${CYAN}${NC}"
+            echo -e "${CYAN}│${NC} Systemd自动重启     : ${GREEN}✓ 已启用${NC}${CYAN}${NC}"
             local restart_sec=$(grep "RestartSec=" /etc/systemd/system/frps.service | cut -d'=' -f2)
-            echo -e "${CYAN}│${NC} 重启间隔       : ${restart_sec:-10s}${NC}"
+            echo -e "${CYAN}│${NC} 重启间隔           : ${restart_sec:-10s}${NC}"
         else
-            echo -e "${CYAN}│${NC} Systemd自动重启 : ${RED}✗ 未启用${NC}${CYAN}${NC}"
+            echo -e "${CYAN}│${NC} Systemd自动重启     : ${RED}✗ 未启用${NC}${CYAN}${NC}"
         fi
     fi
     
     if crontab -l 2>/dev/null | grep -q "frp_monitor.sh"; then
-        echo -e "${CYAN}│${NC} Cron监控        : ${GREEN}✓ 已启用 (每分钟)${NC}${CYAN}${NC}"
+        echo -e "${CYAN}│${NC} Cron监控            : ${GREEN}✓ 已启用 (每分钟)${NC}${CYAN}${NC}"
     else
-        echo -e "${CYAN}│${NC} Cron监控        : ${YELLOW}○ 未启用${NC}${CYAN}${NC}"
+        echo -e "${CYAN}│${NC} Cron监控            : ${YELLOW}○ 未启用${NC}${CYAN}${NC}"
     fi
     
-    echo -e "${CYAN}└─────────────────────────────────────────────────────────┘${NC}"
+    echo -e "${CYAN}└─────────────────────────────────────────────────────────────────┘${NC}"
 }
 
-# 显示主菜单（修复对齐）
 show_main_menu() {
     clear
     status_bar
@@ -323,7 +323,6 @@ show_main_menu() {
 # 自动重启配置函数
 # ============================================================================
 
-# 创建监控脚本
 create_monitor_script() {
     cat > "$FRP_DIR/frp_monitor.sh" << 'EOF'
 #!/bin/bash
@@ -427,7 +426,6 @@ EOF
     echo -e "${GREEN}✓ 监控脚本创建完成${NC}"
 }
 
-# 设置Cron监控
 setup_cron_monitor() {
     local cron_cmd="* * * * * $FRP_DIR/frp_monitor.sh >/dev/null 2>&1"
     
@@ -440,7 +438,6 @@ setup_cron_monitor() {
     echo -e "${GREEN}✓ 定时监控任务已设置（每分钟检查一次）${NC}"
 }
 
-# 禁用Cron监控
 disable_cron_monitor() {
     if crontab -l 2>/dev/null | grep -q "$FRP_DIR/frp_monitor.sh"; then
         crontab -l 2>/dev/null | grep -v "$FRP_DIR/frp_monitor.sh" | crontab -
@@ -450,7 +447,6 @@ disable_cron_monitor() {
     fi
 }
 
-# 配置自动重启
 configure_autorestart() {
     clear
     status_bar
@@ -458,23 +454,23 @@ configure_autorestart() {
     echo ""
     
     echo -e "${CYAN}当前自动重启状态:${NC}"
-    echo -e "${CYAN}┌─────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${CYAN}┌─────────────────────────────────────────────────────────────────┐${NC}"
     
     if [ "$INIT_SYSTEM" = "systemd" ] && [ -f /etc/systemd/system/frps.service ]; then
         if grep -q "Restart=always" /etc/systemd/system/frps.service; then
-            echo -e "${CYAN}│${NC} Systemd自动重启 : ${GREEN}已启用${NC}${CYAN}                              ${NC}"
+            echo -e "${CYAN}│${NC} Systemd自动重启     : ${GREEN}已启用${NC}${CYAN}                                      ${NC}"
         else
-            echo -e "${CYAN}│${NC} Systemd自动重启 : ${RED}未启用${NC}${CYAN}                              ${NC}"
+            echo -e "${CYAN}│${NC} Systemd自动重启     : ${RED}未启用${NC}${CYAN}                                      ${NC}"
         fi
     fi
     
     if crontab -l 2>/dev/null | grep -q "$FRP_DIR/frp_monitor.sh"; then
-        echo -e "${CYAN}│${NC} Cron监控        : ${GREEN}已启用${NC}${CYAN}                              ${NC}"
+        echo -e "${CYAN}│${NC} Cron监控            : ${GREEN}已启用${NC}${CYAN}                                      ${NC}"
     else
-        echo -e "${CYAN}│${NC} Cron监控        : ${RED}未启用${NC}${CYAN}                              ${NC}"
+        echo -e "${CYAN}│${NC} Cron监控            : ${RED}未启用${NC}${CYAN}                                      ${NC}"
     fi
     
-    echo -e "${CYAN}└─────────────────────────────────────────────────────────┘${NC}"
+    echo -e "${CYAN}└─────────────────────────────────────────────────────────────────┘${NC}"
     echo ""
     echo -e "${GREEN}[1]${NC} 启用 Systemd 自动重启"
     echo -e "${RED}[2]${NC} 禁用 Systemd 自动重启"
@@ -519,7 +515,6 @@ configure_autorestart() {
     configure_autorestart
 }
 
-# 启用systemd自动重启
 enable_systemd_autorestart() {
     if [ "$INIT_SYSTEM" != "systemd" ]; then
         echo -e "${RED}当前系统不是systemd，无法使用此功能${NC}"
@@ -544,7 +539,6 @@ enable_systemd_autorestart() {
     echo -e "${GREEN}✓ Systemd自动重启已启用${NC}"
 }
 
-# 禁用systemd自动重启
 disable_systemd_autorestart() {
     if [ "$INIT_SYSTEM" != "systemd" ]; then
         echo -e "${RED}当前系统不是systemd${NC}"
@@ -561,7 +555,6 @@ disable_systemd_autorestart() {
     echo -e "${GREEN}✓ Systemd自动重启已禁用${NC}"
 }
 
-# 查看监控日志
 view_monitor_logs() {
     if [ ! -f "/var/log/frp_monitor.log" ]; then
         echo -e "${YELLOW}监控日志不存在${NC}"
@@ -583,9 +576,8 @@ view_monitor_logs() {
 # 安装相关函数
 # ============================================================================
 
-# 安装依赖
 install_dependencies() {
-    echo -e "${YELLOW}[1/7] 安装系统依赖...${NC}"
+    echo -e "${YELLOW}[1/8] 安装系统依赖...${NC}"
     
     case $PKG_MANAGER in
         "apk")
@@ -607,9 +599,8 @@ install_dependencies() {
     echo -e "${GREEN}✓ 依赖安装完成${NC}"
 }
 
-# 创建用户
 create_user() {
-    echo -e "${YELLOW}[2/7] 创建FRP运行用户...${NC}"
+    echo -e "${YELLOW}[2/8] 创建FRP运行用户...${NC}"
     
     if id -u "$FRP_USER" >/dev/null 2>&1; then
         echo -e "${YELLOW}用户 $FRP_USER 已存在${NC}"
@@ -628,7 +619,6 @@ create_user() {
     echo -e "${GREEN}✓ 用户创建完成${NC}"
 }
 
-# 获取用户配置
 get_user_config() {
     echo -e "${PURPLE}══════════════════════ 配置向导 ═══════════════════════${NC}"
     echo ""
@@ -636,15 +626,21 @@ get_user_config() {
     local default_bind_port="7000"
     local default_dashboard_port="7500"
     local default_dashboard_user="admin"
+    local default_vhost_http_port="80"
+    local default_vhost_https_port="443"
     
     if [ -f "$FRP_CONFIG" ]; then
         local old_bind_port=$(grep '^bind_port' "$FRP_CONFIG" | cut -d'=' -f2 | tr -d ' ')
         local old_dashboard_port=$(grep '^dashboard_port' "$FRP_CONFIG" | cut -d'=' -f2 | tr -d ' ')
         local old_dashboard_user=$(grep '^dashboard_user' "$FRP_CONFIG" | cut -d'=' -f2 | tr -d ' ')
+        local old_vhost_http_port=$(grep '^vhost_http_port' "$FRP_CONFIG" | cut -d'=' -f2 | tr -d ' ')
+        local old_vhost_https_port=$(grep '^vhost_https_port' "$FRP_CONFIG" | cut -d'=' -f2 | tr -d ' ')
         
         [ -n "$old_bind_port" ] && default_bind_port="$old_bind_port"
         [ -n "$old_dashboard_port" ] && default_dashboard_port="$old_dashboard_port"
         [ -n "$old_dashboard_user" ] && default_dashboard_user="$old_dashboard_user"
+        [ -n "$old_vhost_http_port" ] && default_vhost_http_port="$old_vhost_http_port"
+        [ -n "$old_vhost_https_port" ] && default_vhost_https_port="$old_vhost_https_port"
     fi
     
     echo -e "${CYAN}请输入客户端连接端口${NC}"
@@ -688,6 +684,14 @@ get_user_config() {
         exit 1
     fi
     
+    echo -e "${CYAN}请输入HTTP代理端口 (用于Web服务映射，留空则禁用)${NC}"
+    read -p "默认: $default_vhost_http_port (输入0禁用): " vhost_http_port
+    vhost_http_port=${vhost_http_port:-$default_vhost_http_port}
+    
+    echo -e "${CYAN}请输入HTTPS代理端口 (用于SSL网站映射，留空则禁用)${NC}"
+    read -p "默认: $default_vhost_https_port (输入0禁用): " vhost_https_port
+    vhost_https_port=${vhost_https_port:-$default_vhost_https_port}
+    
     echo ""
     echo -e "${GREEN}══════════════════════ 配置确认 ═══════════════════════${NC}"
     echo "客户端连接端口: $bind_port"
@@ -695,6 +699,8 @@ get_user_config() {
     echo "管理用户名:     $dashboard_user"
     echo "管理密码:       $dashboard_pwd"
     echo "认证Token:      ${token:0:16}..."
+    echo "HTTP代理端口:   $([ "$vhost_http_port" != "0" ] && echo "$vhost_http_port" || echo "禁用")"
+    echo "HTTPS代理端口:  $([ "$vhost_https_port" != "0" ] && echo "$vhost_https_port" || echo "禁用")"
     echo -e "${GREEN}══════════════════════════════════════════════════════${NC}"
     echo ""
     
@@ -710,11 +716,12 @@ get_user_config() {
     USER_CONFIG_DASHBOARD_USER="$dashboard_user"
     USER_CONFIG_DASHBOARD_PWD="$dashboard_pwd"
     USER_CONFIG_TOKEN="$token"
+    USER_CONFIG_VHOST_HTTP_PORT="$vhost_http_port"
+    USER_CONFIG_VHOST_HTTPS_PORT="$vhost_https_port"
 }
 
-# 下载FRP
 download_frp() {
-    echo -e "${YELLOW}[3/7] 下载FRP v${FRP_VERSION}...${NC}"
+    echo -e "${YELLOW}[3/8] 下载FRP v${FRP_VERSION}...${NC}"
     
     mkdir -p "$FRP_DIR"
     
@@ -736,9 +743,8 @@ download_frp() {
     echo -e "${GREEN}✓ FRP安装完成${NC}"
 }
 
-# 创建配置文件
 create_config_file() {
-    echo -e "${YELLOW}[4/7] 创建配置文件...${NC}"
+    echo -e "${YELLOW}[4/8] 创建配置文件...${NC}"
     
     cat > "$FRP_CONFIG" << EOF
 # ============================================================================
@@ -747,27 +753,82 @@ create_config_file() {
 # ============================================================================
 
 [common]
+# 基本设置
 bind_addr = 0.0.0.0
 bind_port = ${USER_CONFIG_BIND_PORT}
+
+# 管理面板设置
 dashboard_addr = 0.0.0.0
 dashboard_port = ${USER_CONFIG_DASHBOARD_PORT}
 dashboard_user = ${USER_CONFIG_DASHBOARD_USER}
 dashboard_pwd = ${USER_CONFIG_DASHBOARD_PWD}
+
+# 认证设置
 token = ${USER_CONFIG_TOKEN}
+
+# ============================================================================
+# HTTP/HTTPS 代理设置
+# ============================================================================
+EOF
+
+    # 只有当端口不为0且不为空时才添加配置
+    if [ -n "${USER_CONFIG_VHOST_HTTP_PORT}" ] && [ "${USER_CONFIG_VHOST_HTTP_PORT}" != "0" ]; then
+        cat >> "$FRP_CONFIG" << EOF
+
+# HTTP反向代理端口（用于web服务映射）
+vhost_http_port = ${USER_CONFIG_VHOST_HTTP_PORT}
+EOF
+    fi
+    
+    if [ -n "${USER_CONFIG_VHOST_HTTPS_PORT}" ] && [ "${USER_CONFIG_VHOST_HTTPS_PORT}" != "0" ]; then
+        cat >> "$FRP_CONFIG" << EOF
+
+# HTTPS反向代理端口（用于SSL网站映射）
+vhost_https_port = ${USER_CONFIG_VHOST_HTTPS_PORT}
+EOF
+    fi
+
+    cat >> "$FRP_CONFIG" << EOF
+
+# ============================================================================
+# 日志设置
+# ============================================================================
+
 log_file = ${FRP_LOG}
 log_level = info
 log_max_days = 3
+
+# ============================================================================
+# 高级设置
+# ============================================================================
+
+# KCP协议支持（可选，取消注释启用）
+# kcp_bind_port = ${USER_CONFIG_BIND_PORT}
+
+# 连接限制
 max_pool_count = 50
+max_ports_per_client = 0
 authentication_timeout = 900
+
+# TLS设置
+tls_only = false
+
+# 子域名主机（可选，取消注释并修改）
+# subdomain_host = frp.example.com
+
+# 允许的端口范围（可选，取消注释并修改）
+# allow_ports = 2000-3000,3001,3003,4000-50000
+
+# 心跳检查
+heartbeat_timeout = 90
 EOF
     
     chown "$FRP_USER":"$FRP_USER" "$FRP_CONFIG"
     echo -e "${GREEN}✓ 配置文件创建完成${NC}"
 }
 
-# 创建服务文件（支持自动重启）
 create_service_file() {
-    echo -e "${YELLOW}[5/7] 创建系统服务...${NC}"
+    echo -e "${YELLOW}[5/8] 创建系统服务...${NC}"
     
     case $INIT_SYSTEM in
         "systemd")
@@ -887,9 +948,8 @@ EOF
     esac
 }
 
-# 保存安全信息
 save_security_info() {
-    echo -e "${YELLOW}[6/7] 保存安全信息...${NC}"
+    echo -e "${YELLOW}[6/8] 保存安全信息...${NC}"
     
     local local_ip=""
     if command -v ip >/dev/null 2>&1; then
@@ -919,6 +979,10 @@ FRP 安全信息 - 请妥善保管
   用户名: ${USER_CONFIG_DASHBOARD_USER}
   密码: ${USER_CONFIG_DASHBOARD_PWD}
 
+HTTP/HTTPS代理:
+  HTTP代理端口: $([ "${USER_CONFIG_VHOST_HTTP_PORT}" != "0" ] && echo "${USER_CONFIG_VHOST_HTTP_PORT}" || echo "禁用")
+  HTTPS代理端口: $([ "${USER_CONFIG_VHOST_HTTPS_PORT}" != "0" ] && echo "${USER_CONFIG_VHOST_HTTPS_PORT}" || echo "禁用")
+
 文件路径:
   配置文件: ${FRP_CONFIG}
   日志文件: ${FRP_LOG}
@@ -935,6 +999,19 @@ server_addr = ${local_ip}
 server_port = ${USER_CONFIG_BIND_PORT}
 token = ${USER_CONFIG_TOKEN}
 
+# Web服务映射示例
+[web]
+type = http
+local_port = 80
+custom_domains = www.example.com
+
+# HTTPS服务映射示例
+[web-https]
+type = https
+local_port = 443
+custom_domains = www.example.com
+
+# TCP映射示例
 [ssh]
 type = tcp
 local_ip = 127.0.0.1
@@ -947,9 +1024,8 @@ EOF
     echo -e "${GREEN}✓ 安全信息已保存${NC}"
 }
 
-# 设置自动重启（安装时调用）
 setup_autorestart() {
-    echo -e "${YELLOW}[7/7] 配置自动重启...${NC}"
+    echo -e "${YELLOW}[7/8] 配置自动重启...${NC}"
     
     if [ "$INIT_SYSTEM" = "systemd" ]; then
         echo -e "${GREEN}✓ Systemd自动重启已配置${NC}"
@@ -959,7 +1035,6 @@ setup_autorestart() {
     setup_cron_monitor
 }
 
-# 安装主函数
 install_frp() {
     echo -e "${BLUE}开始安装 FRP 服务端...${NC}"
     echo ""
@@ -997,6 +1072,12 @@ install_frp() {
     echo -e "  管理用户名:     ${USER_CONFIG_DASHBOARD_USER}"
     echo -e "  管理密码:       ${USER_CONFIG_DASHBOARD_PWD}"
     echo -e "  认证Token:      ${USER_CONFIG_TOKEN}"
+    if [ "${USER_CONFIG_VHOST_HTTP_PORT}" != "0" ]; then
+        echo -e "  HTTP代理端口:   ${USER_CONFIG_VHOST_HTTP_PORT}"
+    fi
+    if [ "${USER_CONFIG_VHOST_HTTPS_PORT}" != "0" ]; then
+        echo -e "  HTTPS代理端口:  ${USER_CONFIG_VHOST_HTTPS_PORT}"
+    fi
     echo ""
     echo -e "${CYAN}自动重启:${NC}"
     echo -e "  Systemd自动重启: 已启用"
@@ -1110,7 +1191,6 @@ restart_service() {
 # 其他功能函数
 # ============================================================================
 
-# 详细状态查看
 detailed_status() {
     clear
     status_bar
@@ -1167,7 +1247,6 @@ detailed_status() {
     read -p "按回车键返回主菜单..."
 }
 
-# 编辑配置文件
 edit_config_with_nano() {
     if ! $HAS_NANO; then
         echo -e "${YELLOW}nano未安装，尝试安装...${NC}"
@@ -1197,7 +1276,6 @@ edit_config_with_nano() {
     nano "$FRP_CONFIG"
 }
 
-# 修改配置
 modify_config() {
     if [ ! -f "$FRP_CONFIG" ]; then
         echo -e "${RED}FRP 未安装${NC}"
@@ -1218,7 +1296,6 @@ modify_config() {
     fi
 }
 
-# 查看配置
 view_config() {
     if [ ! -f "$FRP_CONFIG" ]; then
         echo -e "${RED}配置文件不存在${NC}"
@@ -1237,7 +1314,6 @@ view_config() {
     read -p "按回车键返回..."
 }
 
-# 查看日志
 view_logs() {
     if [ ! -f "$FRP_LOG" ]; then
         echo -e "${YELLOW}日志文件不存在${NC}"
@@ -1253,7 +1329,6 @@ view_logs() {
     tail -f -n 20 "$FRP_LOG"
 }
 
-# 显示安全信息
 show_security_info() {
     if [ ! -f "$FRP_DIR/frp_security_info.txt" ]; then
         echo -e "${YELLOW}安全信息文件不存在${NC}"
@@ -1272,7 +1347,6 @@ show_security_info() {
     read -p "按回车键返回..."
 }
 
-# 检查更新
 check_update() {
     echo -e "${BLUE}检查 FRP 更新...${NC}"
     
@@ -1305,7 +1379,6 @@ check_update() {
     fi
 }
 
-# 备份配置
 backup_config() {
     local backup_dir="/var/backups/frp"
     mkdir -p "$backup_dir"
@@ -1319,7 +1392,6 @@ backup_config() {
     echo ""
 }
 
-# 卸载FRP
 uninstall_frp() {
     echo -e "${RED}══════════════════════ 卸载 FRP ═══════════════════════${NC}"
     echo ""
