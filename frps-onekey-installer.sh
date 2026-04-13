@@ -1,4 +1,3 @@
-```bash
 #!/bin/bash
 
 # ============================================================================
@@ -89,9 +88,9 @@ check_root() {
 
 # 显示状态栏
 status_bar() {
-    echo -e "${BLUE}════════════════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════════════════════════════════════════${NC}"
     echo -e "${WHITE}FRP 服务端管理脚本 v2.0 (支持自动重启)${NC}   ${CYAN}系统: $OS_TYPE ($INIT_SYSTEM)${NC}"
-    echo -e "${BLUE}════════════════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════════════════════════════════════════${NC}"
 }
 
 # 获取服务状态
@@ -175,11 +174,11 @@ get_current_config() {
 show_config_summary() {
     get_current_config
     
-    echo -e "${CYAN}┌─────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${CYAN}│${NC} 客户端连接端口 : ${CURRENT_BIND_PORT}${NC}"
-    echo -e "${CYAN}│${NC} 管理面板端口   : ${CURRENT_DASHBOARD_PORT}${NC}"
-    echo -e "${CYAN}│${NC} 管理用户名     : ${CURRENT_DASHBOARD_USER}${NC}"
-    echo -e "${CYAN}│${NC} 认证Token      : ${CURRENT_TOKEN:0:10}...${NC}"
+    echo -e "${CYAN}┌─────────────────────── 配置摘要 ───────────────────────┐${NC}"
+    printf "${CYAN}│${NC} %-25s ${CYAN}:${NC} %-25s ${CYAN}│${NC}\n" "客户端连接端口" "$CURRENT_BIND_PORT"
+    printf "${CYAN}│${NC} %-25s ${CYAN}:${NC} %-25s ${CYAN}│${NC}\n" "管理面板端口" "$CURRENT_DASHBOARD_PORT"
+    printf "${CYAN}│${NC} %-25s ${CYAN}:${NC} %-25s ${CYAN}│${NC}\n" "管理用户名" "$CURRENT_DASHBOARD_USER"
+    printf "${CYAN}│${NC} %-25s ${CYAN}:${NC} %-25s ${CYAN}│${NC}\n" "认证Token" "${CURRENT_TOKEN:0:10}..."
     echo -e "${CYAN}└─────────────────────────────────────────────────────────┘${NC}"
 }
 
@@ -188,9 +187,9 @@ show_network_status() {
     local status=$(get_service_status)
     
     if [ "$status" = "running" ]; then
-        echo -e "${CYAN}┌─────────────────────────────────────────────────────────┐${NC}"
+        echo -e "${CYAN}┌─────────────────────── 网络状态 ───────────────────────┐${NC}"
         
-        # 获取监听端口
+        # 获取监听端口 - 使用更兼容的方法
         local bind_port=${CURRENT_BIND_PORT:-7000}
         local dash_port=${CURRENT_DASHBOARD_PORT:-7500}
         
@@ -199,6 +198,7 @@ show_network_status() {
         if command -v ip >/dev/null 2>&1; then
             local_ip=$(ip route get 1 | awk '{print $NF;exit}')
         elif command -v hostname >/dev/null 2>&1; then
+            # 只使用hostname获取主机名
             local_ip=$(hostname)
         else
             local_ip="未知"
@@ -206,20 +206,20 @@ show_network_status() {
         
         # 如果是主机名，显示主机名
         if [[ "$local_ip" =~ ^[a-zA-Z] ]]; then
-            echo -e "${CYAN}│${NC} 服务器主机     : ${local_ip}${NC}"
+            printf "${CYAN}│${NC} %-25s ${CYAN}:${NC} ${GREEN}%-25s${NC} ${CYAN}│${NC}\n" "服务器主机" "$local_ip"
         else
-            echo -e "${CYAN}│${NC} 服务端地址     : ${local_ip}:${bind_port}${NC}"
+            printf "${CYAN}│${NC} %-25s ${CYAN}:${NC} ${GREEN}%-25s${NC} ${CYAN}│${NC}\n" "服务端地址" "$local_ip:$bind_port"
         fi
         
-        echo -e "${CYAN}│${NC} 管理面板端口   : ${dash_port}${NC}"
+        printf "${CYAN}│${NC} %-25s ${CYAN}:${NC} ${GREEN}%-25s${NC} ${CYAN}│${NC}\n" "管理面板端口" "$dash_port"
         
         # 检查端口监听状态
         if ss -tuln 2>/dev/null | grep -q ":$bind_port "; then
-            echo -e "${CYAN}│${NC} 连接端口状态   : ${GREEN}正常监听${NC}${CYAN}${NC}"
+            printf "${CYAN}│${NC} %-25s ${CYAN}:${NC} ${GREEN}%-25s${NC} ${CYAN}│${NC}\n" "连接端口状态" "正常监听"
         elif netstat -tuln 2>/dev/null | grep -q ":$bind_port "; then
-            echo -e "${CYAN}│${NC} 连接端口状态   : ${GREEN}正常监听${NC}${CYAN}${NC}"
+            printf "${CYAN}│${NC} %-25s ${CYAN}:${NC} ${GREEN}%-25s${NC} ${CYAN}│${NC}\n" "连接端口状态" "正常监听"
         else
-            echo -e "${CYAN}│${NC} 连接端口状态   : ${RED}未监听${NC}${CYAN}${NC}"
+            printf "${CYAN}│${NC} %-25s ${CYAN}:${NC} ${RED}%-25s${NC} ${CYAN}│${NC}\n" "连接端口状态" "未监听"
         fi
         
         echo -e "${CYAN}└─────────────────────────────────────────────────────────┘${NC}"
@@ -228,24 +228,29 @@ show_network_status() {
 
 # 显示自动重启状态
 show_autorestart_status() {
-    echo -e "${CYAN}┌─────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${CYAN}┌─────────────────────── 自动重启状态 ─────────────────────┐${NC}"
     
     # 检查systemd服务配置
     if [ "$INIT_SYSTEM" = "systemd" ] && [ -f /etc/systemd/system/frps.service ]; then
         if grep -q "Restart=always" /etc/systemd/system/frps.service; then
-            echo -e "${CYAN}│${NC} Systemd自动重启 : ${GREEN}✓ 已启用${NC}${CYAN}${NC}"
+            echo -e "${CYAN}│${NC} ${GREEN}✓${NC} Systemd自动重启: ${GREEN}已启用${NC}                        ${CYAN}│${NC}"
             local restart_sec=$(grep "RestartSec=" /etc/systemd/system/frps.service | cut -d'=' -f2)
-            echo -e "${CYAN}│${NC} 重启间隔       : ${restart_sec:-10s}${NC}"
+            echo -e "${CYAN}│${NC}   重启间隔: ${restart_sec:-10s}                                   ${CYAN}│${NC}"
         else
-            echo -e "${CYAN}│${NC} Systemd自动重启 : ${RED}✗ 未启用${NC}${CYAN}${NC}"
+            echo -e "${CYAN}│${NC} ${RED}✗${NC} Systemd自动重启: ${RED}未启用${NC}                        ${CYAN}│${NC}"
         fi
     fi
     
     # 检查cron监控
     if crontab -l 2>/dev/null | grep -q "frp_monitor.sh"; then
-        echo -e "${CYAN}│${NC} Cron监控        : ${GREEN}✓ 已启用 (每分钟)${NC}${CYAN}${NC}"
+        echo -e "${CYAN}│${NC} ${GREEN}✓${NC} Cron监控: ${GREEN}已启用${NC} (每分钟检查)                       ${CYAN}│${NC}"
     else
-        echo -e "${CYAN}│${NC} Cron监控        : ${YELLOW}○ 未启用${NC}${CYAN}${NC}"
+        echo -e "${CYAN}│${NC} ${YELLOW}○${NC} Cron监控: ${YELLOW}未启用${NC}                              ${CYAN}│${NC}"
+    fi
+    
+    # 检查systemd timer
+    if [ "$INIT_SYSTEM" = "systemd" ] && systemctl is-enabled frp-monitor.timer 2>/dev/null | grep -q "enabled"; then
+        echo -e "${CYAN}│${NC} ${GREEN}✓${NC} Systemd Timer监控: ${GREEN}已启用${NC}                           ${CYAN}│${NC}"
     fi
     
     echo -e "${CYAN}└─────────────────────────────────────────────────────────┘${NC}"
@@ -270,17 +275,17 @@ show_main_menu() {
     
     echo -e "${PURPLE}══════════════════════ 主菜单 ═══════════════════════${NC}"
     echo ""
-    echo -e "${GREEN}[1]${NC}  安装 FRP 服务端"
-    echo -e "${GREEN}[2]${NC}  卸载 FRP 服务端"
+    echo -e "${GREEN}[1]${NC} 安装 FRP 服务端"
+    echo -e "${GREEN}[2]${NC} 卸载 FRP 服务端"
     echo ""
-    echo -e "${BLUE}[3]${NC}  启动 FRP 服务"
-    echo -e "${BLUE}[4]${NC}  停止 FRP 服务"
-    echo -e "${BLUE}[5]${NC}  重启 FRP 服务"
-    echo -e "${BLUE}[6]${NC}  查看服务状态"
+    echo -e "${BLUE}[3]${NC} 启动 FRP 服务"
+    echo -e "${BLUE}[4]${NC} 停止 FRP 服务"
+    echo -e "${BLUE}[5]${NC} 重启 FRP 服务"
+    echo -e "${BLUE}[6]${NC} 查看服务状态"
     echo ""
-    echo -e "${YELLOW}[7]${NC}  修改配置"
-    echo -e "${YELLOW}[8]${NC}  查看配置文件"
-    echo -e "${YELLOW}[9]${NC}  查看实时日志"
+    echo -e "${YELLOW}[7]${NC} 修改配置"
+    echo -e "${YELLOW}[8]${NC} 查看配置文件"
+    echo -e "${YELLOW}[9]${NC} 查看实时日志"
     echo ""
     echo -e "${CYAN}[10]${NC} 查看安全信息"
     echo -e "${CYAN}[11]${NC} 检查更新"
@@ -289,7 +294,7 @@ show_main_menu() {
     echo -e "${PURPLE}[13]${NC} 配置自动重启"
     echo -e "${PURPLE}[14]${NC} 查看监控日志"
     echo ""
-    echo -e "${RED}[0]${NC}  退出脚本"
+    echo -e "${RED}[0]${NC} 退出脚本"
     echo ""
     echo -e "${PURPLE}══════════════════════════════════════════════════════${NC}"
     echo ""
@@ -334,7 +339,7 @@ show_main_menu() {
 
 # 安装依赖
 install_dependencies() {
-    echo -e "${YELLOW}[1/8] 安装系统依赖...${NC}"
+    echo -e "${YELLOW}[1/7] 安装系统依赖...${NC}"
     
     case $PKG_MANAGER in
         "apk")
@@ -358,7 +363,7 @@ install_dependencies() {
 
 # 创建用户
 create_user() {
-    echo -e "${YELLOW}[2/8] 创建FRP运行用户...${NC}"
+    echo -e "${YELLOW}[2/7] 创建FRP运行用户...${NC}"
     
     if id -u "$FRP_USER" >/dev/null 2>&1; then
         echo -e "${YELLOW}用户 $FRP_USER 已存在${NC}"
@@ -377,7 +382,7 @@ create_user() {
     echo -e "${GREEN}✓ 用户创建完成${NC}"
 }
 
-# 获取用户配置
+# 获取用户配置 - 简化版
 get_user_config() {
     echo -e "${PURPLE}══════════════════════ 配置向导 ═══════════════════════${NC}"
     echo ""
@@ -429,7 +434,7 @@ get_user_config() {
     read -p "默认: $default_dashboard_user: " dashboard_user
     dashboard_user=${dashboard_user:-$default_dashboard_user}
     
-    # 4. 管理密码
+    # 4. 管理密码 - 直接显示输入
     echo -e "${CYAN}请输入管理面板密码${NC}"
     echo -e "${YELLOW}注意: 密码将明文显示在屏幕上${NC}"
     read -p "请输入密码: " dashboard_pwd
@@ -438,7 +443,7 @@ get_user_config() {
         exit 1
     fi
     
-    # 5. 认证Token
+    # 5. 认证Token - 直接显示输入
     echo -e "${CYAN}请输入认证Token${NC}"
     echo -e "${YELLOW}注意: Token将明文显示在屏幕上${NC}"
     read -p "请输入Token: " token
@@ -475,7 +480,7 @@ get_user_config() {
 
 # 下载FRP
 download_frp() {
-    echo -e "${YELLOW}[3/8] 下载FRP v${FRP_VERSION}...${NC}"
+    echo -e "${YELLOW}[3/7] 下载FRP v${FRP_VERSION}...${NC}"
     
     mkdir -p "$FRP_DIR"
     
@@ -499,7 +504,7 @@ download_frp() {
 
 # 创建配置文件
 create_config_file() {
-    echo -e "${YELLOW}[4/8] 创建配置文件...${NC}"
+    echo -e "${YELLOW}[4/7] 创建配置文件...${NC}"
     
     cat > "$FRP_CONFIG" << EOF
 # ============================================================================
@@ -567,7 +572,7 @@ EOF
 
 # 创建服务文件（支持自动重启）
 create_service_file() {
-    echo -e "${YELLOW}[5/8] 创建系统服务（支持自动重启）...${NC}"
+    echo -e "${YELLOW}[5/7] 创建系统服务（支持自动重启）...${NC}"
     
     case $INIT_SYSTEM in
         "systemd")
@@ -711,7 +716,7 @@ EOF
 
 # 创建监控脚本
 create_monitor_script() {
-    echo -e "${YELLOW}[6/8] 创建进程监控脚本...${NC}"
+    echo -e "${YELLOW}[6/7] 创建进程监控脚本...${NC}"
     
     cat > "$FRP_DIR/frp_monitor.sh" << 'EOF'
 #!/bin/bash
@@ -723,7 +728,7 @@ FRP_PID_FILE="/var/run/frps.pid"
 LOG_FILE="/var/log/frp_monitor.log"
 MAX_RESTART=5
 RESTART_COUNT_FILE="/tmp/frp_restart_count"
-RESTART_WINDOW=300
+RESTART_WINDOW=300  # 5分钟窗口
 
 # 日志函数
 log_message() {
@@ -755,6 +760,7 @@ increment_restart_count() {
 
 # 检查FRP进程
 check_frp() {
+    # 通过PID文件检查
     if [ -f "$FRP_PID_FILE" ]; then
         local pid=$(cat "$FRP_PID_FILE")
         if kill -0 "$pid" 2>/dev/null; then
@@ -762,6 +768,7 @@ check_frp() {
         fi
     fi
     
+    # 通过进程名检查
     if pgrep -f "frps.*$FRP_CONFIG" >/dev/null; then
         return 0
     fi
@@ -773,6 +780,7 @@ check_frp() {
 start_frp() {
     log_message "FRP服务未运行，尝试重启..."
     
+    # 检查重启次数
     increment_restart_count
     local restart_count=$?
     
@@ -782,6 +790,7 @@ start_frp() {
         return 1
     fi
     
+    # 尝试通过系统服务重启
     if command -v systemctl >/dev/null 2>&1; then
         systemctl start frps 2>/dev/null
         if [ $? -eq 0 ]; then
@@ -795,6 +804,7 @@ start_frp() {
             return 0
         fi
     elif [ -f "$FRP_BIN" ]; then
+        # 直接启动
         nohup "$FRP_BIN" -c "$FRP_CONFIG" > /dev/null 2>&1 &
         log_message "直接启动FRP进程 (重启次数: $restart_count)"
         return 0
@@ -806,6 +816,7 @@ start_frp() {
 
 # 主循环
 main() {
+    # 设置日志轮转（保留10MB日志）
     if [ -f "$LOG_FILE" ] && [ $(stat -c%s "$LOG_FILE" 2>/dev/null || echo 0) -gt 10485760 ]; then
         mv "$LOG_FILE" "${LOG_FILE}.old"
     fi
@@ -826,15 +837,18 @@ EOF
 
 # 设置Cron监控
 setup_cron_monitor() {
-    echo -e "${YELLOW}[7/8] 设置定时监控任务...${NC}"
+    echo -e "${YELLOW}[7/7] 设置定时监控任务...${NC}"
     
+    # 添加cron任务（每分钟检查一次）
     local cron_cmd="* * * * * $FRP_DIR/frp_monitor.sh >/dev/null 2>&1"
     
+    # 检查是否已存在
     if crontab -l 2>/dev/null | grep -q "$FRP_DIR/frp_monitor.sh"; then
         echo -e "${YELLOW}监控任务已存在${NC}"
         return
     fi
     
+    # 添加新任务
     (crontab -l 2>/dev/null; echo "$cron_cmd") | crontab -
     
     echo -e "${GREEN}✓ 定时监控任务已设置（每分钟检查一次）${NC}"
@@ -844,6 +858,7 @@ setup_cron_monitor() {
 save_security_info() {
     echo -e "${YELLOW}[8/8] 保存安全信息...${NC}"
     
+    # 尝试获取IP
     local local_ip=""
     if command -v ip >/dev/null 2>&1; then
         local_ip=$(ip route get 1 | awk '{print $NF;exit}')
@@ -876,60 +891,4 @@ FRP 安全信息 - 请妥善保管
 
 服务管理:
   启动命令: $([ "$INIT_SYSTEM" = "systemd" ] && echo "systemctl start frps" || echo "service frps start")
-  状态检查: $([ "$INIT_SYSTEM" = "systemd" ] && echo "systemctl status frps" || echo "service frps status")
-  自动重启: 已启用
-
-客户端配置示例:
-[common]
-server_addr = ${local_ip}
-server_port = ${USER_CONFIG_BIND_PORT}
-token = ${USER_CONFIG_TOKEN}
-
-[ssh]
-type = tcp
-local_ip = 127.0.0.1
-local_port = 22
-remote_port = 6000
-================================================
-EOF
-    
-    chmod 600 "$FRP_DIR/frp_security_info.txt"
-    echo -e "${GREEN}✓ 安全信息已保存${NC}"
-}
-
-# 安装主函数
-install_frp() {
-    echo -e "${BLUE}开始安装 FRP 服务端...${NC}"
-    echo ""
-    
-    if [ -f "$FRP_BIN" ]; then
-        echo -e "${YELLOW}检测到已安装 FRP，是否重新安装？${NC}"
-        read -p "重新安装将保留现有配置？(Y/n): " reinstall
-        if [[ "$reinstall" =~ ^[Yy]?$ ]]; then
-            if [ -f "$FRP_CONFIG" ]; then
-                cp "$FRP_CONFIG" "$FRP_CONFIG.backup.$(date +%Y%m%d_%H%M%S)"
-            fi
-            stop_service_quiet
-        else
-            return
-        fi
-    fi
-    
-    get_user_config
-    install_dependencies
-    create_user
-    download_frp
-    create_config_file
-    create_service_file
-    create_monitor_script
-    setup_cron_monitor
-    save_security_info
-    
-    echo ""
-    echo -e "${GREEN}═══════════════════════════════════════════════════════════════════${NC}"
-    echo -e "${WHITE}                    FRP 安装完成！                              ${NC}"
-    echo -e "${GREEN}═══════════════════════════════════════════════════════════════════${NC}"
-    echo ""
-    echo -e "${CYAN}安装信息:${NC}"
-    echo -e "  客户端连接端口: ${USER_CONFIG_BIND_PORT}"
-    echo -e "  管理面板端口:   ${USER_CONFIG_DASHBOARD_PORT}"
+  状态检查: $([ "$INIT_SYSTEM" = "systemd
