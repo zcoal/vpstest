@@ -80,7 +80,7 @@
   // 提取价格信息（修复版：兼容空格、多类型符号和独立周期行）
   function extractPrice(text) {
     // 一次性付费
-    const oneTimeMatch = text.match(/价格:\s*([^\/\n]+)\/-/);
+    const oneTimeMatch = text.match(/价格:\s*([^\/\n]+)\/(-|一次性)/);
     if (oneTimeMatch) return parsePrice(oneTimeMatch[1], true);
     
     // 免费
